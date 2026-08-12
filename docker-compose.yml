@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stellarpact
+      POSTGRES_PASSWORD: stellarpact_secret
+      POSTGRES_DB: stellarpact_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stellarpact"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    networks:
+      - stellarpact-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://stellarpact:stellarpact_secret@postgres:5432/stellarpact_db?schema=public
+      - SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+      - STELLAR_PACT_CONTRACT_ID=${STELLAR_PACT_CONTRACT_ID}
+      - EVENT_POLL_INTERVAL_MS=5000
+      - PORT=4000
+    ports:
+      - "4000:4000"
+    networks:
+      - stellarpact-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://backend:4000/api
+        - NEXT_PUBLIC_SOROBAN_RPC_URL=${NEXT_PUBLIC_SOROBAN_RPC_URL}
+        - NEXT_PUBLIC_HORIZON_URL=${NEXT_PUBLIC_HORIZON_URL}
+        - NEXT_PUBLIC_FRIENDBOT_URL=${NEXT_PUBLIC_FRIENDBOT_URL}
+        - NEXT_PUBLIC_STELLAR_NETWORK=${NEXT_PUBLIC_STELLAR_NETWORK}
+        - NEXT_PUBLIC_STELLAR_PASSPHRASE=${NEXT_PUBLIC_STELLAR_PASSPHRASE}
+        - NEXT_PUBLIC_STELLAR_PACT_CONTRACT_ID=${STELLAR_PACT_CONTRACT_ID}
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4000/api
+      - NEXT_PUBLIC_SOROBAN_RPC_URL=${NEXT_PUBLIC_SOROBAN_RPC_URL}
+      - NEXT_PUBLIC_HORIZON_URL=${NEXT_PUBLIC_HORIZON_URL}
+      - NEXT_PUBLIC_FRIENDBOT_URL=${NEXT_PUBLIC_FRIENDBOT_URL}
+      - NEXT_PUBLIC_STELLAR_NETWORK=${NEXT_PUBLIC_STELLAR_NETWORK}
+      - NEXT_PUBLIC_STELLAR_PASSPHRASE=${NEXT_PUBLIC_STELLAR_PASSPHRASE}
+      - NEXT_PUBLIC_STELLAR_PACT_CONTRACT_ID=${STELLAR_PACT_CONTRACT_ID}
+    ports:
+      - "3000:3000"
+    networks:
+      - stellarpact-network
+
+networks:
+  stellarpact-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

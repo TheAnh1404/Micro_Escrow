@@ -1,0 +1,92 @@
+name: CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Docker Hub alternative (commented out) ---
+      # - name: Login to Docker Hub
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # ----------------------------------------------
+
+      - name: Downcase repository name
+        id: repo-name
+        run: echo "REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO }}/backend:latest
+            ghcr.io/${{ env.REPO }}/backend:${{ github.sha }}
+          # tags for Docker Hub:
+          # ${{ secrets.DOCKERHUB_USERNAME }}/micro-escrow-backend:latest
+          # ${{ secrets.DOCKERHUB_USERNAME }}/micro-escrow-backend:${{ github.sha }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SOROBAN_RPC_URL=${{ secrets.NEXT_PUBLIC_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+            NEXT_PUBLIC_HORIZON_URL=${{ secrets.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org' }}
+            NEXT_PUBLIC_FRIENDBOT_URL=${{ secrets.NEXT_PUBLIC_FRIENDBOT_URL || 'https://friendbot.stellar.org' }}
+            NEXT_PUBLIC_STELLAR_NETWORK=${{ secrets.NEXT_PUBLIC_STELLAR_NETWORK || 'TESTNET' }}
+            NEXT_PUBLIC_STELLAR_PASSPHRASE=${{ secrets.NEXT_PUBLIC_STELLAR_PASSPHRASE || 'Test SDF Network ; September 2015' }}
+            NEXT_PUBLIC_STELLAR_PACT_CONTRACT_ID=${{ secrets.NEXT_PUBLIC_STELLAR_PACT_CONTRACT_ID }}
+          tags: |
+            ghcr.io/${{ env.REPO }}/frontend:latest
+            ghcr.io/${{ env.REPO }}/frontend:${{ github.sha }}
+          # tags for Docker Hub:
+          # ${{ secrets.DOCKERHUB_USERNAME }}/micro-escrow-frontend:latest
+          # ${{ secrets.DOCKERHUB_USERNAME }}/micro-escrow-frontend:${{ github.sha }}
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "Images pushed to GHCR:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.REPO }}/backend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.REPO }}/frontend:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+# ==============================================================================
+# REQUIRED GITHUB SECRETS:
+# - DOCKERHUB_USERNAME                   (optional, if using Docker Hub)
+# - DOCKERHUB_TOKEN                      (optional, if using Docker Hub)
+# - NEXT_PUBLIC_STELLAR_PACT_CONTRACT_ID (Required for frontend build)
+# - NEXT_PUBLIC_API_URL                  (Required for frontend build)
+# 
+# OPTIONAL SECRETS (defaults to Testnet values if not provided):
+# - NEXT_PUBLIC_SOROBAN_RPC_URL
+# - NEXT_PUBLIC_HORIZON_URL
+# - NEXT_PUBLIC_FRIENDBOT_URL
+# - NEXT_PUBLIC_STELLAR_NETWORK
+# - NEXT_PUBLIC_STELLAR_PASSPHRASE
+# ==============================================================================

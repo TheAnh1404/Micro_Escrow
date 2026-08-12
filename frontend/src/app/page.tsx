@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
-import { Navbar } from '../components/Navbar';
+import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useWallet } from '../context/WalletContext';
 import { Footer } from '../components/Footer';
 import {
   ShieldCheck,
@@ -15,14 +15,65 @@ import {
   Sparkles,
   ChevronRight,
   ExternalLink,
+  Wallet,
+  Loader2,
 } from 'lucide-react';
 
 export default function LandingPage() {
+  const { isConnected, isConnecting, connect } = useWallet();
+  const router = useRouter();
+
+  // Auto-redirect to DApp when wallet is connected
+  useEffect(() => {
+    if (isConnected) {
+      router.replace('/app');
+    }
+  }, [isConnected, router]);
+
   return (
     <div className="min-h-screen bg-background text-slate-100 flex flex-col selection:bg-primary/20 selection:text-primary">
-      <Navbar />
+      {/* ============ MINIMAL LANDING NAVBAR ============ */}
+      <header className="sticky top-0 z-50 w-full glass-panel border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          {/* Brand Logo */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary p-0.5 shadow-glow">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                StellarPact
+              </span>
+              <span className="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                Soroban Testnet
+              </span>
+            </div>
+          </div>
 
-      {/* Hero Section */}
+          {/* Single CTA Button */}
+          <button
+            onClick={connect}
+            disabled={isConnecting}
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-semibold text-sm shadow-glow hover:opacity-95 transition-all transform hover:-translate-y-0.5 disabled:opacity-60"
+          >
+            {isConnecting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Wallet className="w-4 h-4" />
+                Connect Wallet
+              </>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* ============ HERO SECTION ============ */}
       <section className="relative pt-16 pb-24 overflow-hidden">
         {/* Background Glowing Gradients */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-primary/20 to-secondary/20 rounded-full blur-[140px] pointer-events-none" />
@@ -41,7 +92,7 @@ export default function LandingPage() {
                 <span className="bg-gradient-to-r from-primary via-cyan-300 to-secondary bg-clip-text text-transparent">
                   Micro-Escrow
                 </span>{' '}
-                for the Global Economy.
+                for the Global Freelance Economy.
               </h1>
 
               <p className="text-lg text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-light">
@@ -50,13 +101,23 @@ export default function LandingPage() {
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
-                <Link
-                  href="/app"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-bold text-base shadow-glow hover:opacity-95 transition-all transform hover:-translate-y-0.5"
+                <button
+                  onClick={connect}
+                  disabled={isConnecting}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-bold text-base shadow-glow hover:opacity-95 transition-all transform hover:-translate-y-0.5 disabled:opacity-60"
                 >
-                  Launch DApp
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Connecting Wallet...
+                    </>
+                  ) : (
+                    <>
+                      <Wallet className="w-5 h-5" />
+                      Connect Wallet to Start
+                    </>
+                  )}
+                </button>
 
                 <a
                   href="https://soroban.stellar.org/docs"
@@ -70,7 +131,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right Visual 3D Glassmorphism Escrow Card */}
+            {/* Right Visual — 3D Glassmorphism Escrow Card */}
             <div className="lg:col-span-5 relative">
               <div className="relative mx-auto max-w-md glass-card p-6 rounded-3xl border border-slate-700/60 shadow-2xl space-y-6 transform hover:scale-[1.02] transition-transform">
                 {/* Header Badge */}
@@ -128,7 +189,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Stat Bar Section */}
+      {/* ============ STAT BAR SECTION ============ */}
       <section className="py-12 border-y border-slate-800 bg-slate-950/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-slate-800">
@@ -165,7 +226,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Step-by-Step Flow Section */}
+      {/* ============ HOW IT WORKS SECTION ============ */}
       <section className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center space-y-4 mb-16">
           <h2 className="text-3xl sm:text-5xl font-extrabold text-white">
@@ -212,7 +273,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA Footer Banner */}
+      {/* ============ CTA FOOTER BANNER ============ */}
       <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="glass-card p-12 rounded-3xl border border-primary/30 text-center space-y-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
@@ -223,13 +284,23 @@ export default function LandingPage() {
             Connect your Freighter wallet now to start creating micro-escrows on Soroban Testnet.
           </p>
           <div className="pt-2">
-            <Link
-              href="/app"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-bold text-base shadow-glow hover:opacity-95 transition-all"
+            <button
+              onClick={connect}
+              disabled={isConnecting}
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-bold text-base shadow-glow hover:opacity-95 transition-all disabled:opacity-60"
             >
-              Launch DApp Now
-              <ChevronRight className="w-5 h-5" />
-            </Link>
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Wallet className="w-5 h-5" />
+                  Connect Wallet to Start
+                </>
+              )}
+            </button>
           </div>
         </div>
       </section>

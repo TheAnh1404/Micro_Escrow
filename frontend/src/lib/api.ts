@@ -12,6 +12,7 @@ export interface Deal {
   txHash?: string | null;
   createdAt: string;
   updatedAt: string;
+  title?: string;
   client?: { name?: string; avatarUrl?: string } | null;
   freelancer?: { name?: string; avatarUrl?: string } | null;
 }
@@ -25,6 +26,7 @@ export interface SyncDealPayload {
   status: 'LOCKED' | 'SUBMITTED' | 'RELEASED';
   txHash?: string;
   proofUrl?: string;
+  title?: string;
 }
 
 /**

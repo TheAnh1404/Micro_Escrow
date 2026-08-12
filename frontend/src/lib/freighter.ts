@@ -260,9 +260,24 @@ async function waitForTransaction(txHash: string, maxAttempts = 10): Promise<any
  * Ký giao dịch qua Freighter và trả về XDR string đã ký
  */
 async function signWithFreighter(preparedTx: any): Promise<string> {
-  const signedResult = await signTransaction(preparedTx.toXDR(), {
-    networkPassphrase: STELLAR_NETWORK_PASSPHRASE,
-  });
+  let signedResult;
+  try {
+    signedResult = await signTransaction(preparedTx.toXDR(), {
+      networkPassphrase: STELLAR_NETWORK_PASSPHRASE,
+    });
+  } catch (err: any) {
+    if (isUserRejectionError(err)) {
+      throw new Error('User cancelled transaction');
+    }
+    throw err;
+  }
+
+  if ((signedResult as any).error) {
+    if (isUserRejectionError((signedResult as any).error)) {
+      throw new Error('User cancelled transaction');
+    }
+    throw new Error((signedResult as any).error);
+  }
 
   const xdrString =
     typeof signedResult === 'string'

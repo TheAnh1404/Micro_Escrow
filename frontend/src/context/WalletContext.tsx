@@ -69,7 +69,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const bal = await fetchXlmBalance(walletAddress);
       setBalance(bal);
 
-      toast.success('Wallet Connected', {
+      toast.success('Wallet Connected Successfully', {
         id: toastId,
         description: `Connected: ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
       });
@@ -87,7 +87,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setAddress(null);
     setBalance('0.00');
     localStorage.removeItem('stellarpact_wallet_address');
-    toast.info('Wallet Disconnected');
+    toast.info('Disconnected from Wallet');
   };
 
   const refreshBalance = async () => {

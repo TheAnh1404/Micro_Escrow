@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Navbar } from '../../components/Navbar';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Footer } from '../../components/Footer';
 import { StatusBadge } from '../../components/StatusBadge';
 import { SubmitWorkModal } from '../../components/SubmitWorkModal';
@@ -18,6 +19,7 @@ import {
   callSubmitWorkOnChain,
   checkFreighterNetwork,
   formatAddress,
+  fundTestnetWallet,
 } from '../../lib/freighter';
 import { toast } from 'sonner';
 import {
@@ -34,10 +36,15 @@ import {
   Layers,
   ExternalLink,
   FileText,
+  ShieldCheck,
+  LogOut,
+  Droplets,
+  ChevronDown,
 } from 'lucide-react';
 
 export default function DAppDashboard() {
-  const { address, balance, isConnected, connect, refreshBalance } = useWallet();
+  const { address, balance, isConnected, connect, disconnect, refreshBalance } = useWallet();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'CLIENT' | 'FREELANCER'>('CLIENT');
   const [deals, setDeals] = useState<Deal[]>([]);
   const [isLoadingDeals, setIsLoadingDeals] = useState(false);
@@ -56,7 +63,38 @@ export default function DAppDashboard() {
   // State cho Action Release Payment
   const [releasingDealId, setReleasingDealId] = useState<string | null>(null);
 
-  // Load danh sách Escrows
+  // App Navbar states
+  const [isFunding, setIsFunding] = useState(false);
+  const [isTestnet, setIsTestnet] = useState(true);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+
+  // ============================================================
+  // PROTECTED ROUTE GUARD
+  // ============================================================
+  useEffect(() => {
+    const savedAddr = localStorage.getItem('stellarpact_wallet_address');
+    if (!isConnected && !savedAddr) {
+      router.replace('/');
+    }
+  }, [isConnected, router]);
+
+  // Close wallet dropdown on outside click
+  useEffect(() => {
+    if (walletMenuOpen) {
+      const handler = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('[data-wallet-menu]')) {
+          setWalletMenuOpen(false);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', handler), 0);
+      return () => document.removeEventListener('click', handler);
+    }
+  }, [walletMenuOpen]);
+
+  // ============================================================
+  // LOAD DEALS & NETWORK CHECK
+  // ============================================================
   const loadDeals = async () => {
     if (!address) return;
     setIsLoadingDeals(true);
@@ -73,9 +111,9 @@ export default function DAppDashboard() {
   useEffect(() => {
     if (address) {
       loadDeals();
-      // Check Freighter Network Mode
-      checkFreighterNetwork().then(({ isTestnet, currentNetwork }) => {
-        if (!isTestnet) {
+      checkFreighterNetwork().then(({ isTestnet: testnet, currentNetwork }) => {
+        setIsTestnet(testnet);
+        if (!testnet) {
           toast.warning('Network Mismatch Detected', {
             description: `Ví Freighter đang ở mạng "${currentNetwork}". Vui lòng chuyển sang Testnet!`,
           });
@@ -86,7 +124,42 @@ export default function DAppDashboard() {
     }
   }, [address]);
 
-  // Handler: Lock Funds (Client tạo Deal mới) - LUỒNG 8 BƯỚC CHUẨN
+  // ============================================================
+  // HANDLER: FRIENDBOT FAUCET
+  // ============================================================
+  const handleFundFaucet = async () => {
+    if (!address) return;
+    setIsFunding(true);
+    const toastId = toast.loading('Requesting 10,000 Testnet XLM from Friendbot...');
+    try {
+      await fundTestnetWallet(address);
+      toast.success('Testnet XLM Funded Successfully!', {
+        id: toastId,
+        description: '10,000 Testnet XLM has been credited to your wallet.',
+      });
+      await refreshBalance();
+    } catch (error: any) {
+      toast.error('Faucet Request Failed', {
+        id: toastId,
+        description: error.message || 'Could not reach Friendbot.',
+      });
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
+  // ============================================================
+  // HANDLER: DISCONNECT & REDIRECT
+  // ============================================================
+  const handleDisconnect = () => {
+    disconnect();
+    setWalletMenuOpen(false);
+    router.replace('/');
+  };
+
+  // ============================================================
+  // HANDLER: LOCK FUNDS (Client tạo Deal mới) - LUỒNG 8 BƯỚC
+  // ============================================================
   const handleLockFunds = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!address) {
@@ -106,11 +179,10 @@ export default function DAppDashboard() {
       return;
     }
 
-    // Kiểm tra Số Dư Khả Dụng (Balance Check)
     const currentBalNum = parseFloat(balance.replace(/,/g, ''));
     if (amountNum > currentBalNum) {
       toast.error('Số dư XLM không đủ!', {
-        description: `Ví của bạn hiện chỉ có ${balance} XLM. Bấm nút "Get Test XLM" trên Header để lấy thêm Testnet XLM!`,
+        description: `Ví của bạn hiện chỉ có ${balance} XLM. Bấm "Get Test XLM" để lấy thêm!`,
       });
       return;
     }
@@ -119,7 +191,6 @@ export default function DAppDashboard() {
     const toastId = toast.loading('Initiating Escrow Lock on Soroban Testnet...');
 
     try {
-      // 1. Gọi SDK & Ký giao dịch Freighter -> Soroban Execution
       const { dealIdOnChain, txHash } = await callCreateDealOnChain(
         address,
         freelancerAddr.trim(),
@@ -129,7 +200,6 @@ export default function DAppDashboard() {
 
       toast.loading('Transaction Executed! Syncing metadata to Backend...', { id: toastId });
 
-      // 2. Đồng bộ kết quả lên Backend Database
       let syncSuccess = false;
       try {
         await syncDealOnBackend({
@@ -138,6 +208,7 @@ export default function DAppDashboard() {
           freelancerAddress: freelancerAddr.trim(),
           tokenAddress: selectedToken,
           amount,
+          title: projectTitle,
           status: 'LOCKED',
           txHash,
         });
@@ -158,7 +229,6 @@ export default function DAppDashboard() {
         });
       }
 
-      // Reset Form & Reload List
       setFreelancerAddr('');
       setAmount('');
       setProjectTitle('');
@@ -166,7 +236,7 @@ export default function DAppDashboard() {
       loadDeals();
     } catch (error: any) {
       if (error.message === 'User cancelled transaction') {
-        toast.info('User cancelled transaction', { id: toastId });
+        toast.warning('User Cancelled Transaction', { id: toastId });
       } else {
         toast.error('Escrow Creation Failed', {
           id: toastId,
@@ -178,7 +248,9 @@ export default function DAppDashboard() {
     }
   };
 
-  // Handler: Approve & Release Payment (Client duyệt tiền)
+  // ============================================================
+  // HANDLER: RELEASE PAYMENT
+  // ============================================================
   const handleReleasePayment = async (deal: Deal) => {
     if (!address) return;
 
@@ -214,7 +286,7 @@ export default function DAppDashboard() {
       loadDeals();
     } catch (error: any) {
       if (error.message === 'User cancelled transaction') {
-        toast.info('User cancelled transaction', { id: toastId });
+        toast.warning('User Cancelled Transaction', { id: toastId });
       } else {
         toast.error('Release Payment Failed', {
           id: toastId,
@@ -226,7 +298,9 @@ export default function DAppDashboard() {
     }
   };
 
-  // Handler: Submit Work (Freelancer nộp bài)
+  // ============================================================
+  // HANDLER: SUBMIT WORK (Freelancer)
+  // ============================================================
   const handleSubmitWork = async (proofUrl: string) => {
     if (!address || !selectedDealForSubmit) return;
 
@@ -259,7 +333,7 @@ export default function DAppDashboard() {
       loadDeals();
     } catch (error: any) {
       if (error.message === 'User cancelled transaction') {
-        toast.info('User cancelled transaction', { id: toastId });
+        toast.warning('User Cancelled Transaction', { id: toastId });
       } else {
         toast.error('Submission Failed', {
           id: toastId,
@@ -269,6 +343,9 @@ export default function DAppDashboard() {
     }
   };
 
+  // ============================================================
+  // FILTER DEALS
+  // ============================================================
   const filteredDeals = deals.filter((d) => {
     if (!address) return false;
     if (activeTab === 'CLIENT') {
@@ -278,78 +355,160 @@ export default function DAppDashboard() {
     }
   });
 
+  // ============================================================
+  // MODE SWITCHER BUTTONS (reusable)
+  // ============================================================
+  const modeSwitcherButtons = (
+    <>
+      <button
+        onClick={() => setActiveTab('CLIENT')}
+        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-xs tracking-wider transition-all ${
+          activeTab === 'CLIENT'
+            ? 'bg-gradient-to-r from-primary to-cyan-500 text-slate-950 shadow-glow'
+            : 'text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        <UserCheck className="w-3.5 h-3.5" />
+        CLIENT
+      </button>
+      <button
+        onClick={() => setActiveTab('FREELANCER')}
+        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-xs tracking-wider transition-all ${
+          activeTab === 'FREELANCER'
+            ? 'bg-gradient-to-r from-secondary to-indigo-500 text-white shadow-glow-secondary'
+            : 'text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        <Briefcase className="w-3.5 h-3.5" />
+        FREELANCER
+      </button>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-background text-slate-100 flex flex-col">
-      <Navbar />
-
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
-        {/* Header & Role Mode Switcher Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-10 pb-6 border-b border-slate-800">
-          <div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
-              <Layers className="w-8 h-8 text-primary" />
-              Micro-Escrow Workspace
-            </h1>
-            <p className="text-sm text-slate-400 font-light mt-1">
-              Secured by Soroban Testnet &bull; Automated State Purge & Rent Refund.
-            </p>
-          </div>
-
-          {/* Mode Switcher Tabs */}
-          <div className="flex items-center p-1.5 rounded-2xl glass-panel border border-slate-700/80">
-            <button
-              onClick={() => setActiveTab('CLIENT')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs tracking-wider transition-all ${
-                activeTab === 'CLIENT'
-                  ? 'bg-gradient-to-r from-primary to-cyan-500 text-slate-950 shadow-glow'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              CLIENT MODE
-            </button>
-
-            <button
-              onClick={() => setActiveTab('FREELANCER')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs tracking-wider transition-all ${
-                activeTab === 'FREELANCER'
-                  ? 'bg-gradient-to-r from-secondary to-indigo-500 text-white shadow-glow-secondary'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Briefcase className="w-4 h-4" />
-              FREELANCER MODE
-            </button>
-          </div>
-        </div>
-
-        {/* CẢNH BÁO CHƯA KẾT NỐI VÍ */}
-        {!isConnected && (
-          <div className="mb-10 p-6 rounded-3xl glass-card border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-white">Wallet Connection Required</h4>
-                <p className="text-xs text-slate-400">
-                  Please connect your Freighter wallet extension to manage or create escrow agreements.
-                </p>
+      {/* ============ APP NAVBAR ============ */}
+      <header className="sticky top-0 z-50 w-full glass-panel border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2.5 group shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-secondary p-0.5 shadow-glow group-hover:scale-105 transition-transform">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4 text-primary" />
               </div>
             </div>
-            <button
-              onClick={connect}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-secondary text-slate-950 font-bold text-sm shadow-glow shrink-0"
-            >
-              Connect Freighter
-            </button>
-          </div>
-        )}
+            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+              StellarPact
+            </span>
+            <span className="hidden lg:inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              Testnet
+            </span>
+          </Link>
 
-        {/* CLIENT MODE VIEW (Grid 2 Cột) */}
+          {/* Center: Mode Switcher (Desktop) */}
+          <div className="hidden md:flex items-center p-1 rounded-xl glass-panel border border-slate-700/80">
+            {modeSwitcherButtons}
+          </div>
+
+          {/* Right: Wallet Widget */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Friendbot Faucet */}
+            {isTestnet && (
+              <button
+                onClick={handleFundFaucet}
+                disabled={isFunding}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-primary border border-primary/30 text-xs font-semibold transition-all"
+                title="Get 10,000 Test XLM from Friendbot"
+              >
+                {isFunding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Droplets className="w-3.5 h-3.5" />}
+                <span>Get Test XLM</span>
+              </button>
+            )}
+
+            {/* Balance */}
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold">
+              <Coins className="w-3.5 h-3.5 text-primary" />
+              {balance} XLM
+            </div>
+
+            {/* Wallet Address + Dropdown */}
+            <div className="relative" data-wallet-menu>
+              <button
+                onClick={() => setWalletMenuOpen(!walletMenuOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 text-slate-100 text-xs font-mono font-medium hover:bg-slate-700 transition-colors"
+              >
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                {formatAddress(address || '')}
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${walletMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {walletMenuOpen && (
+                <div className="absolute right-0 mt-2 w-60 py-1 rounded-xl glass-card border border-slate-700 shadow-2xl z-50" data-wallet-menu>
+                  <div className="px-4 py-3 border-b border-slate-700/80">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Connected Wallet</p>
+                    <p className="text-xs font-mono text-slate-200 mt-1">{formatAddress(address || '', 8)}</p>
+                  </div>
+                  <div className="px-4 py-3 border-b border-slate-700/80">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Balance</p>
+                    <p className="text-sm font-bold text-white mt-1">{balance} XLM</p>
+                  </div>
+                  <a
+                    href={`${STELLAR_EXPERT_URL}/account/${address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-primary transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View on Stellar Expert
+                  </a>
+                  {STELLAR_PACT_CONTRACT_ID && (
+                    <a
+                      href={`${STELLAR_EXPERT_URL}/contract/${STELLAR_PACT_CONTRACT_ID}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-primary transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View Contract
+                    </a>
+                  )}
+                  <div className="border-t border-slate-700/80">
+                    <button
+                      onClick={handleDisconnect}
+                      className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Disconnect Wallet
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {/* Mobile Mode Switcher */}
+        <div className="md:hidden flex items-center p-1 rounded-xl glass-panel border border-slate-700/80 mb-6">
+          {modeSwitcherButtons}
+        </div>
+
+        {/* Page Title */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-extrabold text-white flex items-center gap-3">
+            <Layers className="w-7 h-7 text-primary" />
+            {activeTab === 'CLIENT' ? 'Client Workspace' : 'Freelancer Workspace'}
+          </h1>
+          <p className="text-sm text-slate-400 font-light mt-1">
+            Secured by Soroban Testnet &bull; Automated State Purge & Rent Refund
+          </p>
+        </div>
+
+        {/* ============ CLIENT MODE VIEW ============ */}
         {activeTab === 'CLIENT' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Cột Trái: Form "Create Escrow" */}
+            {/* Form "Create Escrow" */}
             <div className="lg:col-span-5">
               <div className="glass-card p-6 sm:p-8 rounded-3xl border border-slate-800 space-y-6">
                 <div className="flex items-center gap-3 pb-4 border-b border-slate-800">
@@ -452,7 +611,7 @@ export default function DAppDashboard() {
               </div>
             </div>
 
-            {/* Cột Phải: "My Active Escrows" */}
+            {/* "My Active Escrows" */}
             <div className="lg:col-span-7 space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -491,6 +650,9 @@ export default function DAppDashboard() {
                           <span className="text-xs font-mono font-semibold text-primary">
                             Escrow Deal #{deal.dealIdOnChain}
                           </span>
+                          {deal.title && (
+                            <p className="text-sm font-medium text-white mt-0.5">{deal.title}</p>
+                          )}
                           <p className="text-xs text-slate-400 font-mono mt-0.5">
                             Freelancer: {formatAddress(deal.freelancerAddress)}
                           </p>
@@ -516,7 +678,7 @@ export default function DAppDashboard() {
                           )}
                         </div>
 
-                        {/* Button Approve & Release (Chỉ sáng lên khi status = SUBMITTED) */}
+                        {/* Button Approve & Release */}
                         {deal.status === 'SUBMITTED' ? (
                           <button
                             onClick={() => handleReleasePayment(deal)}
@@ -553,7 +715,7 @@ export default function DAppDashboard() {
           </div>
         )}
 
-        {/* FREELANCER MODE VIEW (List View) */}
+        {/* ============ FREELANCER MODE VIEW ============ */}
         {activeTab === 'FREELANCER' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -589,9 +751,14 @@ export default function DAppDashboard() {
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                        <span className="text-xs font-mono font-semibold text-secondary">
-                          Escrow Deal #{deal.dealIdOnChain}
-                        </span>
+                        <div>
+                          <span className="text-xs font-mono font-semibold text-secondary">
+                            Escrow Deal #{deal.dealIdOnChain}
+                          </span>
+                          {deal.title && (
+                            <p className="text-sm font-medium text-white mt-0.5">{deal.title}</p>
+                          )}
+                        </div>
                         <StatusBadge status={deal.status} proofUrl={deal.proofUrl} />
                       </div>
 

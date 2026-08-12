@@ -3,13 +3,20 @@
 import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { Wallet, LogOut, Loader2, Coins, Droplets } from 'lucide-react';
-import { formatAddress, fundTestnetWallet } from '../lib/freighter';
+import { formatAddress, fundTestnetWallet, checkFreighterNetwork } from '../lib/freighter';
 import { toast } from 'sonner';
 
 export const WalletButton: React.FC = () => {
   const { address, balance, isConnected, isConnecting, connect, disconnect, refreshBalance } =
     useWallet();
   const [isFunding, setIsFunding] = useState(false);
+  const [isTestnet, setIsTestnet] = useState(true);
+
+  React.useEffect(() => {
+    if (isConnected) {
+      checkFreighterNetwork().then(({ isTestnet }) => setIsTestnet(isTestnet));
+    }
+  }, [isConnected]);
 
   const handleFundFaucet = async () => {
     if (!address) return;
@@ -49,19 +56,21 @@ export const WalletButton: React.FC = () => {
     return (
       <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/60 shadow-lg">
         {/* Faucet Friendbot Button */}
-        <button
-          onClick={handleFundFaucet}
-          disabled={isFunding}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-primary border border-primary/30 text-xs font-semibold transition-all hover:scale-105"
-          title="Bơm 10,000 XLM thử nghiệm từ Friendbot Faucet"
-        >
-          {isFunding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Droplets className="w-3.5 h-3.5 text-primary" />
-          )}
-          <span>Get Test XLM</span>
-        </button>
+        {isTestnet && (
+          <button
+            onClick={handleFundFaucet}
+            disabled={isFunding}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-primary border border-primary/30 text-xs font-semibold transition-all hover:scale-105"
+            title="Bơm 10,000 XLM thử nghiệm từ Friendbot Faucet"
+          >
+            {isFunding ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Droplets className="w-3.5 h-3.5 text-primary" />
+            )}
+            <span>Get Test XLM</span>
+          </button>
+        )}
 
         {/* Balance Badge */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold">
